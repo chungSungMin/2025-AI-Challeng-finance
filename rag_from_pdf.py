@@ -77,7 +77,7 @@ def main():
     """개선된 RAG 파이프라인으로 300개의 퀴즈를 생성하고 JSON 파일로 저장합니다."""
     
     NUM_QUIZZES_TO_GENERATE = 300
-    OUTPUT_FILENAME = "개인정보 보호법__시행령300.json"
+    OUTPUT_FILENAME = "신용정보의이용및보호_300.json"
 
     print("--- [준비 단계: RAG 시스템 초기화] ---")
     
