@@ -61,7 +61,7 @@ def make_prompt(text: str) -> str:
     else:
         # 주관식 프롬프트
         prompt = f"""### 지시:
-다음 질문에 대해 서술하시오.
+다음 질문에 대해 핵심 키워드를 중심으로 서술하시오.
 
 ### 질문:
 {text}
