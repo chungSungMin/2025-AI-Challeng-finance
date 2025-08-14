@@ -9,7 +9,7 @@ import time
 
 # --- 1. 설정 (Configuration) ---
 PDF_PATH = "/workspace/2025-AI-Challeng-finance/pdf/개인정보 보호법(법률)(제19234호)(20250313).pdf"
-OUTPUT_FILE = "/workspace/2025-AI-Challeng-finance/generated_dataset_midm.jsonl"
+OUTPUT_FILE = "/workspace/2025-AI-Challeng-finance/generated_dataset_midm_대통령.jsonl"
 MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
 CHUNK_SIZE = 1200
 # ★★★★★ 청크당 생성할 문제 개수 설정 ★★★★★
