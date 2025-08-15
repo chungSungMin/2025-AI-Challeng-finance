@@ -16,18 +16,16 @@ LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-unifi
 
 # 테스트 데이터 및 제출 파일 경로
 TEST_CSV_PATH = '/workspace/open/test.csv'
-SUBMISSION_CSV_PATH = './submission_no_fewshot.csv' # 저장될 파일 이름 변경
+SUBMISSION_CSV_PATH = './submission_no_fewshot.csv' 
 
 # --- 2. 유틸리티 함수 (변경 없음) ---
 
 def is_multiple_choice(question_text: str) -> bool:
-    """2개 이상의 숫자 선택지가 줄 단위로 존재할 경우 객관식으로 간주합니다."""
     lines = question_text.strip().split("\n")
     option_count = sum(bool(re.match(r"^\s*[1-9][0-9]?\s", line)) for line in lines)
     return option_count >= 2
 
 def extract_question_and_choices(full_text: str) -> tuple[str, list[str]]:
-    """전체 질문 문자열에서 질문 본문과 선택지 리스트를 분리합니다."""
     lines = full_text.strip().split("\n")
     q_lines = []
     options = []
@@ -39,7 +37,6 @@ def extract_question_and_choices(full_text: str) -> tuple[str, list[str]]:
     question = " ".join(q_lines)
     return question, options
 
-# --- 3. 프롬프트 생성기 (★★★★★ Few-shot 예시 제거 ★★★★★) ---
 
 def make_prompt(text: str) -> str:
     """
@@ -49,30 +46,65 @@ def make_prompt(text: str) -> str:
         question, options = extract_question_and_choices(text)
         # 객관식 프롬프트
         prompt = f"""### 지시:
-다음 질문에 대한 올바른 답변을 선택지에서 고르시오.
+                    다음 질문에 대한 올바른 답변을 선택지에서 고르세요.
 
-### 질문:
-{question}
+                    ### 예시1
+                    질문 : 개인정보보호법에 따라 보호위원회가 과징금을 부과할 때 고려해야 하는 사항 중 하나는 무엇인가요?
+                    선택지 : 
+                    1. 위반행위의 내용 및 정도
+                    2. 개인정보 처리자의 주소와 연락처
+                    3. 개인정보의 수집 및 이용 목적
+                    4. 개인정보 처리자의 직원 수와 연봉 수준
+                    답 : 1
 
-### 선택지:
-{chr(10).join(options)}
+                    ### 예시2
+                    질문 : 개인정보 보호 기본계획은 언제까지 수립해야 하는가?
+                    선택지 : 
+                    1. 개인정보 보호 기본계획은 매년 12월 31일까지 수립해야 한다
+                    2. 그 3년이 시작되는 해의 전년도 6월 30일까지 수립해야한다.
+                    3. 개인정보 보호 기본계획은 매년 9월 30일까지 수립해야 한다.
+                    4. 개인정보 보호 기본계획은 그 3년이 시작되는 해의 전년도 12월 31일까지 수립해야 한다.
+                    5. 개인정보 보호 기본계획은 매년 10월 30일까지 수립해야 한다.
+                    답변 : 2
 
-### 답변:"""
+                    ### 실제 입력
+                    질문:
+                    {question}
+
+                    선택지:
+                    {chr(10).join(options)}
+
+                    답변:
+                """
     else:
         # 주관식 프롬프트
         prompt = f"""### 지시:
-다음 질문에 대해 핵심 키워드를 중심으로 서술하시오.
+                    다음 질문에 대해 핵심 키워드를 중심으로 완벽한 문장으로 서술하세요.
 
-### 질문:
-{text}
+                    ### 예시1 : 
+                    질문 : 개인정보의 국외 이전이 중지될 수 있는 조건은 무엇인가?
+                    답변 : 개인정보의 국외 이전이 중지될 수 있는 조건은 제28조의8제1항, 제4항 또는 제5항을 위반하거나 개인정보를 이전받는 자나 국가가 개인정보 보호 수준에 미치지 못하여 정보주체에게 피해가 발생할 우려가 있는 경우이다.
 
-### 답변:"""
+
+                    ### 예시2 : 
+                    질문 : 분쟁조정위원회가 분쟁조정 신청을 받은 후 심사하여 조정안을 작성해야 하는 기간은 얼마인가?
+                    답변 : 분쟁조정위원회는 분쟁조정 신청을 받은 날부터 60일 이내에 심사하여 조정안을 작성해야 한다.
+                    
+
+                    ### 실제 입력 : 
+                    질문:
+                    {text}
+
+                    ### 답변:
+                """
 
     return prompt
 
 # --- 4. 모델 및 토크나이저 로드 ---
 
 print("⏳ 모델과 토크나이저를 로딩합니다...")
+
+#=============양자화=====================#
 
 quantization_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -87,6 +119,7 @@ base_model = AutoModelForCausalLM.from_pretrained(
     device_map="auto"
 )
 
+# trust_remote_code : hugging face에서 제공하는 추가적인 토크나이저 코드 실행 가능하도록 
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
@@ -120,7 +153,7 @@ def post_process_answer(generated_text: str, original_question: str) -> str:
         return "미응답"
 
     # 만약을 대비해 답변에 프롬프트 키워드가 포함된 경우 제거
-    if "###" in answer:
+    if "##" or   "###" or "---" in answer:
         answer = answer.split("###")[0].strip()
         
     if is_multiple_choice(original_question):
@@ -144,7 +177,7 @@ if __name__ == "__main__":
         
         output = pipe(
             prompt, 
-            max_new_tokens=256,
+            max_new_tokens=512,
             temperature=0.1,
             top_p=0.9,
             do_sample=True,
