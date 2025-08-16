@@ -32,7 +32,7 @@ RAG_DATA_FILES = [
 ]
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 # 임베딩 모델 및 벡터 DB 경로 설정
-EMBEDDING_MODEL_NAME = "jhgan/ko-sbert-nli"
+# EMBEDDING_MODEL_NAME = "jhgan/ko-sbert-nli"
 FAISS_DB_PATH = "./faiss_index_laws"
 
 
