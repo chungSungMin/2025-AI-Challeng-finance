@@ -12,11 +12,11 @@ import os
 BASE_MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
 
 # ⭐️ 사용자 설정: 학습된 LoRA 어댑터가 저장된 경로를 지정해주세요.
-LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-unified-trainer/checkpoint-134" 
+LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-combined-laws/checkpoint-22" 
 
 # 테스트 데이터 및 제출 파일 경로
 TEST_CSV_PATH = '/workspace/open/test.csv'
-SUBMISSION_CSV_PATH = './submission_no_fewshot.csv' 
+SUBMISSION_CSV_PATH = './submission_new_traindataset.csv' 
 
 # --- 2. 유틸리티 함수 (변경 없음) ---
 
@@ -79,7 +79,9 @@ def make_prompt(text: str) -> str:
     else:
         # 주관식 프롬프트
         prompt = f"""### 지시:
-                    다음 질문에 대해 핵심 키워드를 중심으로 완벽한 문장으로 서술하세요.
+                    다음 질문에 대해 핵심 키워드를 중심으로 알고있는 대로 서술하세요.
+                    단, 모든 문장은 한국어로 구성되어야 하고, 완벽한 문장으로 서술해야합니다. 
+                    
 
                     ### 예시1 : 
                     질문 : 개인정보의 국외 이전이 중지될 수 있는 조건은 무엇인가?
@@ -162,7 +164,16 @@ def post_process_answer(generated_text: str, original_question: str) -> str:
     
     return answer if answer else "답변을 생성하지 못했습니다."
 
-# --- 6. 메인 실행 ---
+
+def is_code_detected(text: str) -> bool:
+    """간단한 키워드 기반으로 생성된 텍스트에 코드가 포함되었는지 확인합니다."""
+    # 사용자가 제공한 특정 코드 패턴 및 일반적인 키워드 추가
+    code_keywords = ['def ', 'import ', 'class ', 'r\'', 'sys.stdout', 'ans_qna']
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in code_keywords)
+
+
+# --- 6. 메인 실행 (재시도 로직 적용) ---
 if __name__ == "__main__":
     try:
         test_df = pd.read_csv(TEST_CSV_PATH)
@@ -172,24 +183,50 @@ if __name__ == "__main__":
         exit()
 
     preds = []
-    for q in tqdm(test_df['Question'], desc="🚀 추론 진행 중"):
+    
+    # ⭐️ 2. 최대 재시도 횟수 설정
+    MAX_RETRIES = 3 
+
+    for index, q in tqdm(enumerate(test_df['Question']), total=len(test_df), desc="🚀 추론 진행 중"):
         prompt = make_prompt(q)
         
-        output = pipe(
-            prompt, 
-            max_new_tokens=512,
-            temperature=0.1,
-            top_p=0.9,
-            do_sample=True,
-            return_full_text=False,
-            eos_token_id=tokenizer.eos_token_id
-        )
-        
-        generated_text = output[0]['generated_text']
+        is_valid_answer = False
+        retries = 0
+        generated_text = ""
+
+        # ⭐️ 3. 유효한 답변을 얻거나 최대 재시도 횟수에 도달할 때까지 반복
+        while not is_valid_answer and retries < MAX_RETRIES:
+            if retries > 0:
+                print(f"\n🔄 TEST_{index} 질문에 대한 답변 재시도 중... ({retries}/{MAX_RETRIES})")
+
+            output = pipe(
+                prompt, 
+                max_new_tokens=512,
+                # ⭐️ 재시도할 때마다 temperature를 약간 높여 다른 답변을 유도
+                temperature=0.1 + (retries * 0.15),
+                top_p=0.9,
+                do_sample=True,
+                return_full_text=False,
+                eos_token_id=tokenizer.eos_token_id
+            )
+            
+            generated_text = output[0]['generated_text']
+
+            # 생성된 텍스트에 코드 패턴이 있는지 확인
+            if is_code_detected(generated_text):
+                retries += 1
+                # 마지막 재시도에서도 실패하면, 경고 메시지 출력 후 루프 종료
+                if retries == MAX_RETRIES:
+                    print(f"❌ TEST_{index} 질문에 대해 최대 재시도 횟수 초과. 마지막으로 생성된 답변을 사용합니다.")
+                    is_valid_answer = True # 루프를 빠져나가기 위해 True로 설정
+            else:
+                is_valid_answer = True # 코드 패턴이 없으므로 유효한 답변으로 간주하고 루프 종료
+
+        # 최종적으로 얻은 답변을 후처리
         pred_answer = post_process_answer(generated_text, original_question=q)
         preds.append(pred_answer)
 
-    print("📄 추론이 완료되었습니다. 제출 파일을 생성합니다...")
+    print("\n📄 추론이 완료되었습니다. 제출 파일을 생성합니다...")
     try:
         sample_submission = pd.read_csv('/workspace/open/sample_submission.csv')
         sample_submission['Answer'] = preds
@@ -197,3 +234,5 @@ if __name__ == "__main__":
         print(f"✅ 제출 파일 생성이 완료되었습니다: '{SUBMISSION_CSV_PATH}'")
     except FileNotFoundError:
         print(f"❌ 오류: '/workspace/open/sample_submission.csv' 파일을 찾을 수 없습니다. 경로를 확인해주세요.")
+
+
