@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 import os
 from datasets import load_dataset
+from langchain_community.document_loaders import PyPDFLoader
 
 # RAG를 위한 라이브러리 추가
 from langchain_community.vectorstores import FAISS
@@ -18,7 +19,7 @@ from langchain_core.documents import Document
 BASE_MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
 
 # ⭐️ 사용자 설정: 학습된 LoRA 어댑터가 저장된 경로를 지정해주세요.
-LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-combined-laws/checkpoint-22" 
+LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-trainer/checkpoint-110" 
 
 # 테스트 데이터 및 제출 파일 경로/workspace/paper_generate_mid_정보보호산업.jsonl
 TEST_CSV_PATH = '/workspace/open/test.csv'
@@ -26,9 +27,20 @@ SUBMISSION_CSV_PATH = './submission_rag_inference.csv'
 
 # RAG 지식 베이스로 사용할 JSONL 파일 목록
 RAG_DATA_FILES = [
-    "/workspace/paper_generate_mid_개인정보보호법.jsonl",
-    "/workspace/paper_generate_mid_전자금융거래법.jsonl",
-    "/workspace/paper_generate_mid_정보보호산업.jsonl"
+"/workspace/개인금융채권의 관리 및 개인금융채무자의 보호에 관한 법률(법률)(제20369호)(20241017).pdf",
+"/workspace/개인정보 보호법(법률)(제19234호)(20250313) (1).pdf",
+"/workspace/거버넌스.pdf",
+"/workspace/경찰공무원 등의 개인정보 처리에 관한 규정(대통령령)(제35039호)(20241203).pdf",
+"/workspace/금융보안연구원.pdf",
+"/workspace/금융소비자 보호에 관한 법률(법률)(제20305호)(20240814).pdf",
+"/workspace/금융실명거래 및 비밀보장에 관한 법률 시행규칙(총리령)(제01406호)(20170726).pdf",
+"/workspace/랜섬웨어.pdf",
+"/workspace/마이데이터.pdf",
+"/workspace/메타버스.pdf",
+"/workspace/법원 개인정보 보호에 관한 규칙(대법원규칙)(제03109호)(20240315).pdf",
+"/workspace/아웃소싱.pdf",
+"/workspace/정보_보안.pdf",
+"/workspace/클라우드컴퓨팅 발전 및 이용자 보호에 관한 법률(법률)(제20732호)(20250131).pdf",
 ]
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 # 임베딩 모델 및 벡터 DB 경로 설정
@@ -37,8 +49,48 @@ FAISS_DB_PATH = "./faiss_index_laws"
 
 
 # --- 2. RAG 백엔드 구축 함수 ---
+# def build_or_load_rag_backend():
+#     """3개의 JSONL 파일로부터 FAISS 벡터 DB를 구축하거나 기존 DB를 로드합니다."""
+    
+#     # 1. 임베딩 모델 로드
+#     embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    
+#     # 2. 이미 생성된 DB가 있으면 로드, 없으면 새로 생성
+#     if os.path.exists(FAISS_DB_PATH):
+#         print(f"⏳ 기존 벡터 DB를 '{FAISS_DB_PATH}'에서 로드합니다...")
+#         vector_db = FAISS.load_local(
+#             FAISS_DB_PATH, 
+#             embedding_model, 
+#             allow_dangerous_deserialization=True
+#         )
+#         print("✅ 벡터 DB 로드 완료.")
+#     else:
+#         print(f"⏳ '{RAG_DATA_FILES}' 파일들로 새로운 벡터 DB를 구축합니다...")
+#         # 데이터셋 로드
+#         dataset = load_dataset('json', data_files=RAG_DATA_FILES, split='train')
+        
+#         # Langchain Document 객체로 변환
+#         # source_chunk를 검색 대상 텍스트로 사용
+#         documents = [
+#             Document(page_content=item['source_chunk'], metadata={'question': item['question'], 'answer': item['answer']}) 
+#             for item in tqdm(dataset, desc="📄 Document 객체 생성 중")
+#         ]
+        
+#         # FAISS 벡터 DB 생성
+#         vector_db = FAISS.from_documents(documents, embedding_model)
+        
+#         # 다음 실행을 위해 로컬에 저장
+#         vector_db.save_local(FAISS_DB_PATH)
+#         print(f"✅ 새로운 벡터 DB 구축 및 저장 완료: '{FAISS_DB_PATH}'")
+
+#     # 검색기(Retriever) 반환 (상위 3개 문서 검색)
+#     return vector_db.as_retriever(search_kwargs={'k': 3})
+
+
+# 필요한 PDF 로더를 import 합니다.
+# --- 2. RAG 백엔드 구축 함수 (수정된 버전) ---
 def build_or_load_rag_backend():
-    """3개의 JSONL 파일로부터 FAISS 벡터 DB를 구축하거나 기존 DB를 로드합니다."""
+    """PDF 및 JSONL 파일들로부터 FAISS 벡터 DB를 구축하거나 기존 DB를 로드합니다."""
     
     # 1. 임베딩 모델 로드
     embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
@@ -54,18 +106,29 @@ def build_or_load_rag_backend():
         print("✅ 벡터 DB 로드 완료.")
     else:
         print(f"⏳ '{RAG_DATA_FILES}' 파일들로 새로운 벡터 DB를 구축합니다...")
-        # 데이터셋 로드
-        dataset = load_dataset('json', data_files=RAG_DATA_FILES, split='train')
         
-        # Langchain Document 객체로 변환
-        # source_chunk를 검색 대상 텍스트로 사용
-        documents = [
-            Document(page_content=item['source_chunk'], metadata={'question': item['question'], 'answer': item['answer']}) 
-            for item in tqdm(dataset, desc="📄 Document 객체 생성 중")
-        ]
+        # --- ★★★ 핵심 수정 부분 시작 ★★★ ---
+        all_documents = []
+        # 각 PDF 파일을 순회하며 텍스트를 추출합니다.
+        for file_path in tqdm(RAG_DATA_FILES, desc="📚 PDF 파일 로딩 중"):
+            try:
+                # PyPDFLoader를 사용해 PDF 파일 로드
+                loader = PyPDFLoader(file_path)
+                # PDF의 각 페이지가 별도의 Document 객체로 분리되어 리스트로 반환됨
+                documents_from_pdf = loader.load() 
+                all_documents.extend(documents_from_pdf)
+            except Exception as e:
+                print(f"⚠️ 경고: '{file_path}' 파일을 처리하는 중 오류 발생: {e}")
         
-        # FAISS 벡터 DB 생성
-        vector_db = FAISS.from_documents(documents, embedding_model)
+        # --- ★★★ 핵심 수정 부분 끝 ★★★ ---
+
+        if not all_documents:
+            print("❌ 오류: 처리할 문서가 없습니다. RAG_DATA_FILES 경로를 확인해주세요.")
+            exit()
+
+        print(f"총 {len(all_documents)}개의 페이지(Document)를 임베딩합니다...")
+        # FAISS 벡터 DB 생성 (기존 documents 변수명을 all_documents로 변경)
+        vector_db = FAISS.from_documents(all_documents, embedding_model)
         
         # 다음 실행을 위해 로컬에 저장
         vector_db.save_local(FAISS_DB_PATH)
@@ -73,6 +136,7 @@ def build_or_load_rag_backend():
 
     # 검색기(Retriever) 반환 (상위 3개 문서 검색)
     return vector_db.as_retriever(search_kwargs={'k': 3})
+
 
 
 # --- 3. 유틸리티 및 프롬프트 함수 ---
@@ -122,6 +186,9 @@ def make_prompt(text: str) -> str:
         # 주관식 프롬프트
         prompt = f"""### 지시:
 다음 질문에 대해 핵심 키워드를 중심으로 완벽한 한국어 문장으로 서술하세요.
+'참고 문서'에 직접적인 언급이 없어도 최대한 배경 지식을 활용해서 답해주세요.
+"문서에 따르면~ " 이라는 내용을 쓰지 말아주세요.
+
 
 ### 질문:
 {text}
@@ -160,6 +227,7 @@ def make_rag_prompt(text: str, context: str) -> str:
         prompt = f"""### 지시:
 주어진 '참고 문서'의 내용을 바탕으로 다음 질문에 대해 완벽한 한국어 문장으로 서술하세요. '참고 문서에 따르면'과 같은 표현은 사용하지 마세요.
 '참고 문서'에 직접적인 언급이 없어도 최대한 배경 지식을 활용해서 답해주세요.
+"문서에 따르면~ " 이라는 내용을 쓰지 말아주세요.
 
 ### 참고 문서:
 {context}
