@@ -13,7 +13,7 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
-DATASET_PATH = "/workspace/merged_dataset.jsonl" 
+DATASET_PATH = "/workspace/2025-AI-Challeng-finance/cybersecurity_data_final_processed.jsonl" 
 OUTPUT_DIR = "./midm-lora-adapter-trainer"
 
 
@@ -111,11 +111,11 @@ if __name__ == "__main__" :
 
     training_arguments = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=8,
+        per_device_train_batch_size=3,
+        gradient_accumulation_steps=4,
         gradient_checkpointing=True,
         learning_rate=2e-4,
-        num_train_epochs=10,
+        num_train_epochs=3,
         logging_steps=10,
         fp16=True,
         save_strategy="epoch",
