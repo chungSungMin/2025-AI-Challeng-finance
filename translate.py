@@ -4,12 +4,17 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from tqdm import tqdm
 
 # --- 설정 ---
-# ★★★ 모델 ID를 NLLB 모델로 변경 ★★★
+# 모델 ID를 NLLB 모델로 변경
 MODEL_ID = "facebook/nllb-200-distilled-600M"
 INPUT_FILE = '/workspace/2025-AI-Challeng-finance/cybersecurity_data_converted.jsonl'
 # 출력 파일 이름도 모델에 맞게 변경하여 혼동 방지
-OUTPUT_FILE = 'cybersecurity_data_translated_ko_nllb.jsonl'
+OUTPUT_FILE = 'cybersecurity_data_translated_ko_nllb_from_5000.jsonl'
 BATCH_SIZE = 32
+
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+# ★★★ 번역을 시작할 줄 번호를 설정합니다 (예: 5000) ★★★
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+START_LINE = 5000
 # --------------------------------------------------
 
 def count_lines(filename):
@@ -21,7 +26,6 @@ def main():
     # 1. 모델 및 토크나이저 로딩
     print(f"'{MODEL_ID}' 모델과 토크나이저를 로딩합니다...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # ★★★ NLLB 모델은 소스 언어를 지정해야 합니다 ★★★
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, src_lang="eng_Latn")
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_ID).to(device)
     model.eval()
@@ -38,11 +42,24 @@ def main():
         batch_texts = [] # 번역할 텍스트만 담을 리스트
 
         # tqdm으로 전체 파일 진행률을 표시
-        for line in tqdm(infile, total=total_lines, desc="파일 처리 중"):
+        # ★★★ enumerate를 사용하여 줄 번호(인덱스)를 함께 가져옵니다 ★★★
+        for i, line in enumerate(tqdm(infile, total=total_lines, desc="파일 처리 중")):
+            
+            # ★★★ 시작 줄 번호 이전의 데이터는 건너뜁니다 ★★★
+            # (i는 0부터 시작하므로, 5000번째 줄은 인덱스 4999입니다)
+            if i < START_LINE - 1:
+                continue
+
+            # --- 이 아래는 기존 로직과 동일 ---
             data = json.loads(line)
             batch_data.append(data)
-            batch_texts.append(data['question'])
-            batch_texts.append(data['answer'])
+
+            question = data.get('question') if data.get('question') is not None else ''
+            answer = data.get('answer') if data.get('answer') is not None else ''
+
+
+            batch_texts.append(question)
+            batch_texts.append(answer)
 
             # 배치가 꽉 차면 즉시 번역하고 파일에 씀
             if len(batch_data) >= BATCH_SIZE:
@@ -55,7 +72,7 @@ def main():
         if batch_data:
             process_and_write_batch(batch_data, batch_texts, model, tokenizer, device, outfile)
 
-    print("✅ 모든 작업이 성공적으로 완료되었습니다!")
+    print(f"✅ 모든 작업이 성공적으로 완료되었습니다! ({START_LINE}번째 줄부터 번역 완료)")
 
 def process_and_write_batch(batch_data, batch_texts, model, tokenizer, device, outfile):
     """배치를 번역하고 결과를 파일에 쓰는 함수"""
@@ -63,8 +80,7 @@ def process_and_write_batch(batch_data, batch_texts, model, tokenizer, device, o
         # 토크나이징
         inputs = tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
         
-        # ★★★ NLLB 모델은 타겟 언어 ID를 generate 함수에 전달해야 합니다 ★★★
-        # ★★★ 수정된 부분: tokenizer.convert_tokens_to_ids() 메서드를 사용 ★★★
+        # NLLB 모델은 타겟 언어 ID를 generate 함수에 전달해야 합니다
         # 한국어 코드는 "kor_Hang" 입니다.
         generated_tokens = model.generate(
             **inputs,

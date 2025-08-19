@@ -13,7 +13,18 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
-DATASET_PATH = "/workspace/2025-AI-Challeng-finance/cybersecurity_data_final_processed.jsonl" 
+
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+# ★★★ 여기가 수정된 부분입니다 ★★★
+# ★★★ 여러 개의 jsonl 파일 경로를 리스트로 지정 ★★★
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+DATASET_FILES = [
+    "/workspace/open_qa.jsonl",
+    "/workspace/open_qa1.jsonl",
+    "/workspace/open_qa2.jsonl",
+    "/workspace/2025-AI-Challeng-finance/cybersecurity_data_final_processed.jsonl",
+    "/workspace/2025-AI-Challeng-finance/cybersecurity_data_translated_ko_nllb_from_5000.jsonl"
+] 
 OUTPUT_DIR = "./midm-lora-adapter-trainer"
 
 
@@ -65,7 +76,8 @@ def preprocess_function_with_loss_mask_text(examples):
     
 
 if __name__ == "__main__" : 
-    dataset = load_dataset('json', data_files=DATASET_PATH, split='train')
+    # ★★★ 여러 파일을 한 번에 로드 ★★★
+    dataset = load_dataset('json', data_files=DATASET_FILES, split='train')
 
     dataset = dataset.map(preprocess_function_with_loss_mask_text, remove_columns=list(dataset.features))
 
@@ -99,8 +111,8 @@ if __name__ == "__main__" :
 
 
     peft_config = LoraConfig(
-        r=4,
-        lora_alpha=8, # 주로 rank의 2배를 ㅏㅅ용하는 경향이 있다.
+        r=8,
+        lora_alpha=16, # 주로 rank의 2배를 ㅏㅅ용하는 경향이 있다.
         lora_dropout=0.05,
         target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
         task_type="CAUSAL_LM"
@@ -115,10 +127,13 @@ if __name__ == "__main__" :
         gradient_accumulation_steps=4,
         gradient_checkpointing=True,
         learning_rate=2e-4,
-        num_train_epochs=3,
+        # num_train_epochs=3,      # Epoch 대신 Step으로 학습하기 위해 이 부분을 주석 처리하거나 삭제합니다.
+        max_steps=2500,           # ★★★ 총 500 스텝만큼만 학습하도록 설정합니다. ★★★
         logging_steps=10,
         fp16=True,
-        save_strategy="epoch",
+        # save_strategy="epoch",   # 저장 전략을 step 단위로 변경합니다.
+        save_strategy="steps",     # ★★★ "steps"로 변경 ★★★
+        save_steps=500,            # ★★★ 100 스텝마다 모델을 저장하도록 설정합니다. ★★★
         optim="paged_adamw_8bit"
     )
 

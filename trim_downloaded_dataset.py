@@ -10,9 +10,9 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
 
 # 원본 파일 경로 (번역 결과 파일)
-INPUT_FILE = '/workspace/2025-AI-Challeng-finance/cybersecurity_data_translated_ko_nllb.jsonl'
+INPUT_FILE = "/workspace/2025-AI-Challeng-finance/cybersecurity_data_translated_ko_nllb_from_5000.jsonl"
 # 최종 결과를 저장할 새로운 파일 경로
-OUTPUT_FILE = 'cybersecurity_data_final_processed.jsonl'
+OUTPUT_FILE = 'cybersecurity_data_final_processed_ver2.jsonl'
 
 # -----------------------------------------
 

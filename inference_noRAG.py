@@ -21,7 +21,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 BASE_MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
 
 # ⭐️ 사용자 설정: 학습된 LoRA 어댑터가 저장된 경로를 지정해주세요.
-LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-trainer/checkpoint-236" 
+LORA_ADAPTER_PATH = "/workspace/2025-AI-Challeng-finance/midm-lora-adapter-trainer/checkpoint-2500" 
 
 # 테스트 데이터 및 제출 파일 경로
 TEST_CSV_PATH = '/workspace/open/test.csv'
@@ -132,6 +132,7 @@ def make_prompt(text: str) -> str:
     else:
         prompt = f"""### 지시:
 다음 질문에 대해 핵심 키워드를 중심으로 완벽한 한국어 문장으로 서술하세요. 배경 지식을 활용해서 답해주세요. "문서에 따르면~ " 이라는 내용을 쓰지 말아주세요.
+최대한 **전문 용어**를 활용해서 서술해주세요. 그리고 마크다운을 사용하지말고, 2~3문장으로 핵심을 담아 서술하세요.
 
 ### 질문:
 {text}
@@ -163,10 +164,12 @@ def make_rag_prompt(text: str, context: str) -> str:
 """
     else:
         prompt = f"""### 지시:
-주어진 '참고 문서'를 바탕으로 다음 질문에 대해 완벽한 한국어 문장으로 서술하세요.
+다음 질문에 대해 완벽한 한국어 문장으로 서술하세요.
 먼저, 질문과 관련된 핵심 키워드와 핵심 문장을 문서에서 모두 찾으세요.
 그런 다음, 찾은 내용을 종합하여 완전하고 상세한 한국어 문장으로 설명하세요.
 '참고 문서에 따르면'과 같은 표현은 절대 사용하지 마세요.
+최대한 **전문 용어**를 활용해서 서술해주세요. 그리고 마크다운을 사용하지말고, 2~3문장으로 핵심을 담아 서술하세요.
+
 
 ### 참고 문서:
 {context}
