@@ -15,15 +15,15 @@ from langchain_community.vectorstores import FAISS
 
 # Hugging Face (LLM)
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, pipeline
-from peft import PeftModel
+# from peft import PeftModel # ⭐️ PeftModel은 더 이상 필요 없으므로 주석 처리하거나 삭제합니다.
 
 # --- 2. 설정 (Configuration) ---
 
 # 기본 모델 ID
 BASE_MODEL_ID = "K-intelligence/Midm-2.0-Base-Instruct"
 
-# ⭐️ 사용자 설정: 학습된 LoRA 어댑터 경로
-LORA_ADAPTER_PATH = "/workspace/checkpoint-708" 
+# ⭐️ 사용자 설정: 학습된 LoRA 어댑터 경로 (더 이상 사용하지 않음)
+# LORA_ADAPTER_PATH = "/workspace/checkpoint-708" 
 
 # 테스트 데이터 및 제출 파일 경로
 TEST_CSV_PATH = '/workspace/open/test.csv'
@@ -108,7 +108,8 @@ def make_rag_prompt(text: str, context: str) -> str:
     if is_multiple_choice(text):
         question, options = extract_question_and_choices(text)
         prompt = f"""### 지시:
-주어진 **'참고 문서'의 내용만을 근거**로 하여 다음 질문에 대한 올바른 답변의 '번호'만 출력하세요. 다른 설명은 절대 추가하지 마세요.
+"Please reason step by step, and you should must write the correct option number (1, 2, 3, 4 or 5).\n 정답 번호를 반드시 하나만 출력하세요. 설명은 필요 없습니다."
+정답을 도출할 때 참고자료에 관련 내용이나 단어가 있다면 답안 선택에 **반드시 활용**하세요
 
 ### 참고 문서:
 {context}
@@ -126,6 +127,7 @@ def make_rag_prompt(text: str, context: str) -> str:
 주어진 **'참고 문서'의 내용만을 근거**로 하여 '질문'에 답변하세요.
 문서에서 질문과 관련된 핵심 내용을 종합하여, 전문 용어를 사용해 2~3개의 완벽한 한국어 문장으로 설명해야 합니다.
 **'참고 문서에 따르면'과 같은 표현은 절대 사용하지 마세요.** 당신의 배경 지식이나 외부 정보는 사용하지 마세요.
+Generate your thought process step by step, but don't print it out.
 
 ### 참고 문서:
 {context}
@@ -139,7 +141,7 @@ def make_rag_prompt(text: str, context: str) -> str:
 
 
 
-# --- 5. 모델 및 토크나이저 로드 (기존 코드와 동일) ---
+# --- 5. 모델 및 토크나이저 로드 (⭐️ LoRA 어댑터 로드 제거) ---
 print("⏳ 모델과 토크나이저를 로딩합니다...")
 
 quantization_config = BitsAndBytesConfig(
@@ -148,18 +150,26 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.bfloat16
 )
-base_model = AutoModelForCausalLM.from_pretrained(BASE_MODEL_ID, quantization_config=quantization_config, device_map="auto")
+
+# ⭐️ 'base_model' 대신 'model' 변수명으로 바로 로드하여 파이프라인에 사용합니다.
+model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL_ID, 
+    quantization_config=quantization_config, 
+    device_map="auto"
+)
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-print(f"⏳ '{LORA_ADAPTER_PATH}'에서 LoRA 어댑터를 로딩하여 모델에 적용합니다...")
-model = PeftModel.from_pretrained(base_model, LORA_ADAPTER_PATH)
-print("⏳ LoRA 가중치를 기본 모델에 병합합니다...")
-model = model.merge_and_unload()
+# ⭐️ LoRA 어댑터를 로드하고 병합하는 부분을 완전히 제거했습니다.
+# print(f"⏳ '{LORA_ADAPTER_PATH}'에서 LoRA 어댑터를 로딩하여 모델에 적용합니다...")
+# lora_model = PeftModel.from_pretrained(base_model, LORA_ADAPTER_PATH)
+# print("⏳ LoRA 가중치를 기본 모델에 병합합니다...")
+# model = lora_model.merge_and_unload()
 
+# ⭐️ 'model' 변수에 저장된 기본 모델을 파이프라인에 바로 사용합니다.
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, device_map="auto")
-print("✅ 모델 로딩 및 설정이 완료되었습니다.")
+print("✅ 모델 로딩 및 설정이 완료되었습니다. (사전 학습된 기본 가중치 사용)")
 
 
 # --- 6. 답변 후처리 및 유틸리티 (기존 코드와 동일) ---
@@ -209,10 +219,6 @@ if __name__ == "__main__":
         retrieved_docs = retriever.invoke(q)
         context_text = "\n\n---\n\n".join([doc.page_content for doc in retrieved_docs])
         
-        # 검색된 내용이 없을 경우 RAG 미사용 프롬프트 생성 (선택적)
-        # if not context_text.strip():
-        #     prompt = make_prompt(q) # RAG 없는 프롬프트 함수(필요시 정의)
-        # else:
         prompt = make_rag_prompt(q, context_text)
         
         is_valid_answer = False
@@ -246,7 +252,7 @@ if __name__ == "__main__":
         pred_answer = post_process_answer(generated_text, original_question=q)
         preds.append(pred_answer)
 
-    print("\n📄 추론이 완료되었습니다. 제출 파일을 생성합니다...")
+    print("\n 추론이 완료되었습니다. 제출 파일을 생성합니다...")
     try:
         sample_submission = pd.read_csv('/workspace/open/sample_submission.csv')
         sample_submission['Answer'] = preds
